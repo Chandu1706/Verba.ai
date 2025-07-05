@@ -1,104 +1,129 @@
+//
+//  TranscriptionService.swift
+//  verba
+//
+
 import Foundation
-import AVFoundation
-import Speech
 
 class TranscriptionService {
     static let shared = TranscriptionService()
 
+    private let uploadURL = "https://api.assemblyai.com/v2/upload"
+    private let transcriptURL = "https://api.assemblyai.com/v2/transcript"
+
+    private let session: URLSession = .shared
+    private let pollingInterval: TimeInterval = 3
+    private let maxRetries = 5
+
     func transcribeWithAssemblyAI(audioURL: URL, apiKey: String, completion: @escaping (String?) -> Void) {
-        print(" Loaded API Key: \(String(apiKey.prefix(4)))••••\(String(apiKey.suffix(2)))")
-        print(" Sending segment for transcription: \(audioURL.lastPathComponent)")
+        uploadAudio(audioURL: audioURL, apiKey: apiKey) { [weak self] uploadResult in
+            switch uploadResult {
+            case .success(let uploadedURL):
+                self?.startTranscription(apiKey: apiKey, audioURL: uploadedURL, completion: completion)
+            case .failure(let error):
+                print("❌ Upload failed: \(error.localizedDescription)")
+                completion("Upload failed")
+            }
+        }
+    }
 
-        // Step 1: Upload
-        var uploadRequest = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/upload")!)
-        uploadRequest.httpMethod = "POST"
-        uploadRequest.setValue(apiKey, forHTTPHeaderField: "Authorization")
-        uploadRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-
+    private func uploadAudio(audioURL: URL, apiKey: String, completion: @escaping (Result<String, Error>) -> Void) {
         guard let audioData = try? Data(contentsOf: audioURL) else {
-            print(" Failed to read audio data")
-            completion(nil)
+            completion(.failure(NSError(domain: "TranscriptionService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to read audio file."])))
             return
         }
 
-        uploadRequest.httpBody = audioData
+        var request = URLRequest(url: URL(string: uploadURL)!)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        request.httpBody = audioData
 
-        URLSession.shared.dataTask(with: uploadRequest) { data, _, error in
-            guard let data = data, error == nil,
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let uploadURL = json["upload_url"] as? String else {
-                print("❌ Upload failed")
-                completion(nil)
+        session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                completion(.failure(error))
                 return
             }
 
-            print(" Upload complete, received URL: \(uploadURL)")
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let uploadedURL = json["upload_url"] as? String else {
+                completion(.failure(NSError(domain: "TranscriptionService", code: -2, userInfo: [NSLocalizedDescriptionKey: "Upload URL not received"])))
+                return
+            }
 
-            // Step 2: Transcribe
-            var transcribeRequest = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/transcript")!)
-            transcribeRequest.httpMethod = "POST"
-            transcribeRequest.setValue(apiKey, forHTTPHeaderField: "Authorization")
-            transcribeRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-            let requestBody: [String: Any] = ["audio_url": uploadURL]
-            transcribeRequest.httpBody = try? JSONSerialization.data(withJSONObject: requestBody)
-
-            URLSession.shared.dataTask(with: transcribeRequest) { data, _, error in
-                guard let data = data, error == nil,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let transcriptId = json["id"] as? String else {
-                    print(" Transcription request failed")
-                    RetryManager.shared.recordFailure()
-                    completion(nil)
-                    return
-                }
-
-                print(" Transcription started with ID: \(transcriptId)")
-                self.pollStatus(for: transcriptId, apiKey: apiKey, retries: 0, completion: completion)
-            }.resume()
+            completion(.success(uploadedURL))
         }.resume()
     }
 
-    private func pollStatus(for id: String, apiKey: String, retries: Int, completion: @escaping (String?) -> Void) {
-        if RetryManager.shared.shouldFallback() {
-            print(" Too many failures, falling back to Apple Speech Recognizer")
-            AppleTranscriptionService.transcribe(audioURL: nil) { fallbackText in
-                completion(fallbackText ?? "Fallback transcription failed")
+    private func startTranscription(apiKey: String, audioURL: String, completion: @escaping (String?) -> Void) {
+        var request = URLRequest(url: URL(string: transcriptURL)!)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = ["audio_url": audioURL]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        session.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                print("❌ Transcription request failed: \(error.localizedDescription)")
+                completion("Transcription request failed")
+                return
             }
+
+            guard let data = data,
+                  let responseJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let id = responseJSON["id"] as? String else {
+                completion("Invalid transcription response")
+                return
+            }
+
+            print("🟡 Transcription started with ID: \(id)")
+            self?.pollTranscription(apiKey: apiKey, id: id, retries: 0, completion: completion)
+        }.resume()
+    }
+
+    private func pollTranscription(apiKey: String, id: String, retries: Int, completion: @escaping (String?) -> Void) {
+        guard retries < maxRetries else {
+            print("⛔️ Max retries reached for transcription ID: \(id)")
+            completion("Timed out")
             return
         }
 
-        let url = URL(string: "https://api.assemblyai.com/v2/transcript/\(id)")!
-        var request = URLRequest(url: url)
+        let pollingURL = "\(transcriptURL)/\(id)"
+        var request = URLRequest(url: URL(string: pollingURL)!)
+        request.httpMethod = "GET"
         request.setValue(apiKey, forHTTPHeaderField: "Authorization")
 
-        print("⏲ Scheduling polling every 3 seconds for ID: \(id)")
+        session.dataTask(with: request) { [weak self] data, response, error in
+            if let error = error {
+                print("❌ Polling error: \(error.localizedDescription)")
+                completion("Polling failed")
+                return
+            }
 
-        DispatchQueue.global().asyncAfter(deadline: .now() + 3) {
-            URLSession.shared.dataTask(with: request) { data, _, error in
-                guard let data = data, error == nil,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let status = json["status"] as? String else {
-                    print(" Polling failed")
-                    RetryManager.shared.recordFailure()
-                    self.pollStatus(for: id, apiKey: apiKey, retries: retries + 1, completion: completion)
-                    return
+            guard let data = data,
+                  let responseJSON = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let status = responseJSON["status"] as? String else {
+                completion("Invalid polling response")
+                return
+            }
+
+            if status == "completed", let text = responseJSON["text"] as? String {
+                print("✅ Transcription complete: \(text.prefix(60))...")
+                completion(text)
+            } else if status == "error" {
+                let errorMsg = responseJSON["error"] as? String ?? "Unknown error"
+                print("❌ Transcription failed: \(errorMsg)")
+                completion("Transcription error: \(errorMsg)")
+            } else {
+                print("🔁 Status: \(status). Retrying in \(self?.pollingInterval ?? 3)s...")
+                DispatchQueue.global().asyncAfter(deadline: .now() + (self?.pollingInterval ?? 3)) {
+                    self?.pollTranscription(apiKey: apiKey, id: id, retries: retries + 1, completion: completion)
                 }
-
-                print(" Polling result: \(status)")
-
-                switch status {
-                case "completed":
-                    RetryManager.shared.resetFailures()
-                    completion(json["text"] as? String)
-                case "error":
-                    RetryManager.shared.recordFailure()
-                    completion(" Transcription failed")
-                default:
-                    self.pollStatus(for: id, apiKey: apiKey, retries: retries + 1, completion: completion)
-                }
-            }.resume()
-        }
+            }
+        }.resume()
     }
 }
 

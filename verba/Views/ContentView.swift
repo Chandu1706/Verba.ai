@@ -85,6 +85,11 @@ struct ContentView: View {
             .padding()
             .navigationTitle("Audio Recorder")
         }
+        .alert("Error", isPresented: $audioManager.showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(audioManager.errorMessage)
+        }
     }
 }
 

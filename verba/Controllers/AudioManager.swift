@@ -1,3 +1,8 @@
+//
+//  AudioManager.swift
+//  verba
+//
+
 import Foundation
 import AVFoundation
 import SwiftData
@@ -10,15 +15,17 @@ class AudioManager: ObservableObject {
     private var player: AVAudioPlayer?
     private var timer: Timer?
     private var modelContext: ModelContext?
-
     private var currentSession: RecordingSession?
 
     @Published var isRecording = false
     @Published var currentInputLevel: Float = 0.0
     @Published var transcriptionStatus: String = ""
-    @Published var canPlay = false
+    @Published var canPlay: Bool = false
     @Published var isPaused = false
-    @Published var isTranscribing = false
+    @Published var isTranscribing: Bool = false
+    @Published var showError: Bool = false
+    @Published var errorMessage: String = ""
+
 
     func startRecording(with context: ModelContext) {
         self.modelContext = context
@@ -30,6 +37,7 @@ class AudioManager: ObservableObject {
 
         do {
             try configureAudioSession()
+            try checkDiskSpace()
 
             let format = engine.inputNode.outputFormat(forBus: 0)
             let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -53,7 +61,6 @@ class AudioManager: ObservableObject {
 
             try engine.start()
             isRecording = true
-            isPaused = false
             transcriptionStatus = "Recording..."
             canPlay = false
 
@@ -62,7 +69,8 @@ class AudioManager: ObservableObject {
             }
 
         } catch {
-            print(" Failed to start recording: \(error)")
+            transcriptionStatus = "Failed to record: \(error.localizedDescription)"
+            print("❌ Failed to start recording: \(error)")
         }
     }
 
@@ -70,7 +78,7 @@ class AudioManager: ObservableObject {
         engine.pause()
         isPaused = true
         transcriptionStatus = "Paused"
-        print(" Paused recording")
+        print("⏸ Paused recording")
     }
 
     func resumeRecording() {
@@ -78,9 +86,10 @@ class AudioManager: ObservableObject {
             try engine.start()
             isPaused = false
             transcriptionStatus = "Resumed"
-            print("Resumed recording")
+            print("▶️ Resumed recording")
         } catch {
-            print(" Failed to resume: \(error)")
+            transcriptionStatus = "Failed to resume: \(error.localizedDescription)"
+            print("❌ Failed to resume: \(error)")
         }
     }
 
@@ -91,22 +100,18 @@ class AudioManager: ObservableObject {
         isRecording = false
         isPaused = false
         transcriptionStatus = "Recording stopped"
+        canPlay = true
 
-        if let fileURL = fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
-            canPlay = true
+        if let fileURL = fileURL {
             segmentAndSend(urlOverride: fileURL)
-        } else {
-            canPlay = false
-            print("⚠️ No valid file to play")
         }
 
         currentSession = nil
     }
 
     func playRecording() {
-        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
-            print("⚠️ No file to play")
-            canPlay = false
+        guard let fileURL else {
+            print("⛔️ No file to play")
             return
         }
 
@@ -116,6 +121,7 @@ class AudioManager: ObservableObject {
             player?.play()
             print("▶️ Playing: \(fileURL.lastPathComponent)")
         } catch {
+            transcriptionStatus = "Playback failed"
             print("❌ Playback failed: \(error)")
         }
     }
@@ -137,30 +143,39 @@ class AudioManager: ObservableObject {
 
             switch type {
             case .began:
-                print("🔕 Interrupted — stopping...")
+                print("🛑 Interrupted — stopping...")
                 self.stopRecording()
             case .ended:
-                print("🔔 Interruption ended")
+                print("✅ Interruption ended")
             default:
                 break
             }
         }
     }
 
+    private func checkDiskSpace() throws {
+        let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let resourceValues = try docDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        if let availableSpace = resourceValues.volumeAvailableCapacityForImportantUsage,
+           availableSpace < 10_000_000 {
+            throw NSError(domain: "AudioManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Insufficient disk space"])
+        }
+    }
+
     private func segmentAndSend(urlOverride: URL? = nil) {
         guard let modelContext, let currentSession else {
-            print("⚠️ SwiftData context or session missing")
+            print("⛔️ SwiftData context or session missing")
             return
         }
 
         guard let apiKey = Bundle.main.infoDictionary?["ASSEMBLY_API_KEY"] as? String, !apiKey.isEmpty else {
-            print("🔑 Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             transcriptionStatus = "Missing API Key"
+            print("❌ Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             return
         }
 
         guard let segmentURL = urlOverride ?? fileURL else {
-            print("⚠️ No segment file found.")
+            print("❌ No segment file found.")
             return
         }
 
