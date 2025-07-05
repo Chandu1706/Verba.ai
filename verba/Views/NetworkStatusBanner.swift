@@ -1,16 +1,18 @@
 import SwiftUI
 
 struct NetworkStatusBanner: View {
-    let isOnline: Bool
+    @ObservedObject var networkMonitor = NetworkMonitor.shared
 
     var body: some View {
-        Text(isOnline ? "Online" : "Offline")
-            .frame(maxWidth: .infinity)
-            .padding(6)
-            .background(isOnline ? Color.green.opacity(0.2) : Color.red.opacity(0.2))
-            .foregroundColor(isOnline ? .green : .red)
-            .font(.caption)
-            .accessibilityLabel(isOnline ? "Online status" : "Offline status")
+        if !networkMonitor.isConnected {
+            Text("⚠️ Offline Mode: Changes will sync when you're online.")
+                .frame(maxWidth: .infinity)
+                .padding(8)
+                .background(Color.orange)
+                .foregroundColor(.white)
+                .font(.caption)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
     }
 }
 

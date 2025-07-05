@@ -1,8 +1,3 @@
-//
-//  AudioManager.swift
-//  verba
-//
-
 import Foundation
 import AVFoundation
 import SwiftData
@@ -21,16 +16,15 @@ class AudioManager: ObservableObject {
     @Published var isRecording = false
     @Published var currentInputLevel: Float = 0.0
     @Published var transcriptionStatus: String = ""
-    @Published var canPlay: Bool = false
-
+    @Published var canPlay = false
+    @Published var isPaused = false
+    @Published var isTranscribing = false
 
     func startRecording(with context: ModelContext) {
         self.modelContext = context
         let timestamp = ISO8601DateFormatter().string(from: Date())
 
-        // Create empty session with default content
         let session = RecordingSession(fileName: "Session_\(timestamp)", createdAt: Date())
-
         self.currentSession = session
         context.insert(session)
 
@@ -59,7 +53,8 @@ class AudioManager: ObservableObject {
 
             try engine.start()
             isRecording = true
-            transcriptionStatus = " Recording..."
+            isPaused = false
+            transcriptionStatus = "Recording..."
             canPlay = false
 
             timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
@@ -71,24 +66,47 @@ class AudioManager: ObservableObject {
         }
     }
 
+    func pauseRecording() {
+        engine.pause()
+        isPaused = true
+        transcriptionStatus = "Paused"
+        print(" Paused recording")
+    }
+
+    func resumeRecording() {
+        do {
+            try engine.start()
+            isPaused = false
+            transcriptionStatus = "Resumed"
+            print("Resumed recording")
+        } catch {
+            print(" Failed to resume: \(error)")
+        }
+    }
+
     func stopRecording() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         timer?.invalidate()
         isRecording = false
-        transcriptionStatus = " Recording stopped"
-        canPlay = true
+        isPaused = false
+        transcriptionStatus = "Recording stopped"
 
-        if let fileURL = fileURL {
+        if let fileURL = fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
+            canPlay = true
             segmentAndSend(urlOverride: fileURL)
+        } else {
+            canPlay = false
+            print("⚠️ No valid file to play")
         }
 
         currentSession = nil
     }
 
     func playRecording() {
-        guard let fileURL else {
-            print(" No file to play")
+        guard let fileURL, FileManager.default.fileExists(atPath: fileURL.path) else {
+            print("⚠️ No file to play")
+            canPlay = false
             return
         }
 
@@ -96,12 +114,11 @@ class AudioManager: ObservableObject {
             player = try AVAudioPlayer(contentsOf: fileURL)
             player?.prepareToPlay()
             player?.play()
-            print(" Playing: \(fileURL.lastPathComponent)")
+            print("▶️ Playing: \(fileURL.lastPathComponent)")
         } catch {
-            print(" Playback failed: \(error)")
+            print("❌ Playback failed: \(error)")
         }
     }
-
 
     private func configureAudioSession() throws {
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
@@ -110,7 +127,7 @@ class AudioManager: ObservableObject {
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { notification in
             if let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                let reasonEnum = AVAudioSession.RouteChangeReason(rawValue: reason) {
-                print(" Audio route changed: \(reasonEnum)")
+                print("🔄 Audio route changed: \(reasonEnum)")
             }
         }
 
@@ -120,52 +137,53 @@ class AudioManager: ObservableObject {
 
             switch type {
             case .began:
-                print(" Interrupted — stopping...")
+                print("🔕 Interrupted — stopping...")
                 self.stopRecording()
             case .ended:
-                print(" Interruption ended")
+                print("🔔 Interruption ended")
             default:
                 break
             }
         }
     }
 
-  
-
     private func segmentAndSend(urlOverride: URL? = nil) {
         guard let modelContext, let currentSession else {
-            print(" SwiftData context or session missing")
+            print("⚠️ SwiftData context or session missing")
             return
         }
 
         guard let apiKey = Bundle.main.infoDictionary?["ASSEMBLY_API_KEY"] as? String, !apiKey.isEmpty else {
-            print(" Missing or invalid ASSEMBLY_API_KEY in Info.plist")
+            print("🔑 Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             transcriptionStatus = "Missing API Key"
             return
         }
 
         guard let segmentURL = urlOverride ?? fileURL else {
-            print(" No segment file found.")
+            print("⚠️ No segment file found.")
             return
         }
 
         let maskedKey = String(apiKey.prefix(4)) + "...." + String(apiKey.suffix(2))
-        print(" Loaded API Key: \(maskedKey)")
-        print(" Sending segment for transcription: \(segmentURL.lastPathComponent)")
+        print("🔐 Loaded API Key: \(maskedKey)")
+        print("📤 Sending segment for transcription: \(segmentURL.lastPathComponent)")
 
         transcriptionStatus = "Transcribing..."
+        isTranscribing = true
 
         TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: segmentURL, apiKey: apiKey) { transcriptionText in
             DispatchQueue.main.async {
                 let segment = RecordingSegment(
                     fileName: segmentURL.lastPathComponent,
                     transcription: transcriptionText ?? "Transcription failed",
+                    createdAt: Date(),
                     session: currentSession
                 )
                 modelContext.insert(segment)
 
                 self.transcriptionStatus = transcriptionText ?? "Transcription failed"
-                print(" Saved segment: \(segment.fileName)")
+                self.isTranscribing = false
+                print("✅ Saved segment: \(segment.fileName)")
             }
         }
     }
