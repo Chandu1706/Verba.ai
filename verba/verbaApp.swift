@@ -2,7 +2,7 @@
 //  verbaApp.swift
 //  verba
 //
-//  Created by Abhinav Reddy Pitta on 7/5/25.
+//  Created by Chandu Korubilli on 7/5/25.
 //
 
 import SwiftUI
