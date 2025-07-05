@@ -10,7 +10,7 @@ import Speech
 class AppleTranscriptionService {
     static func transcribe(audioURL: URL?, completion: @escaping (String?) -> Void) {
         guard let audioURL = audioURL ?? getLatestRecording() else {
-            print("❌ No audio file found for Apple fallback")
+            print(" No audio file found for Apple fallback")
             completion(nil)
             return
         }
@@ -20,13 +20,13 @@ class AppleTranscriptionService {
 
         recognizer?.recognitionTask(with: request) { result, error in
             if let error = error {
-                print("❌ Apple transcription failed: \(error.localizedDescription)")
+                print(" Apple transcription failed: \(error.localizedDescription)")
                 completion("Apple transcription failed")
                 return
             }
 
             if let result = result, result.isFinal {
-                print("🍎 Apple transcription result: \(result.bestTranscription.formattedString)")
+                print(" Apple transcription result: \(result.bestTranscription.formattedString)")
                 completion(result.bestTranscription.formattedString)
             }
         }

@@ -6,8 +6,8 @@ class TranscriptionService {
     static let shared = TranscriptionService()
 
     func transcribeWithAssemblyAI(audioURL: URL, apiKey: String, completion: @escaping (String?) -> Void) {
-        print("🔐 Loaded API Key: \(String(apiKey.prefix(4)))••••\(String(apiKey.suffix(2)))")
-        print("📤 Sending segment for transcription: \(audioURL.lastPathComponent)")
+        print(" Loaded API Key: \(String(apiKey.prefix(4)))••••\(String(apiKey.suffix(2)))")
+        print(" Sending segment for transcription: \(audioURL.lastPathComponent)")
 
         // Step 1: Upload
         var uploadRequest = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/upload")!)
@@ -16,7 +16,7 @@ class TranscriptionService {
         uploadRequest.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
 
         guard let audioData = try? Data(contentsOf: audioURL) else {
-            print("❌ Failed to read audio data")
+            print(" Failed to read audio data")
             completion(nil)
             return
         }
@@ -32,7 +32,7 @@ class TranscriptionService {
                 return
             }
 
-            print("✅ Upload complete, received URL: \(uploadURL)")
+            print(" Upload complete, received URL: \(uploadURL)")
 
             // Step 2: Transcribe
             var transcribeRequest = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/transcript")!)
@@ -47,13 +47,13 @@ class TranscriptionService {
                 guard let data = data, error == nil,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let transcriptId = json["id"] as? String else {
-                    print("❌ Transcription request failed")
+                    print(" Transcription request failed")
                     RetryManager.shared.recordFailure()
                     completion(nil)
                     return
                 }
 
-                print("🟡 Transcription started with ID: \(transcriptId)")
+                print(" Transcription started with ID: \(transcriptId)")
                 self.pollStatus(for: transcriptId, apiKey: apiKey, retries: 0, completion: completion)
             }.resume()
         }.resume()
@@ -61,7 +61,7 @@ class TranscriptionService {
 
     private func pollStatus(for id: String, apiKey: String, retries: Int, completion: @escaping (String?) -> Void) {
         if RetryManager.shared.shouldFallback() {
-            print("⚠️ Too many failures, falling back to Apple Speech Recognizer")
+            print(" Too many failures, falling back to Apple Speech Recognizer")
             AppleTranscriptionService.transcribe(audioURL: nil) { fallbackText in
                 completion(fallbackText ?? "Fallback transcription failed")
             }
@@ -79,13 +79,13 @@ class TranscriptionService {
                 guard let data = data, error == nil,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let status = json["status"] as? String else {
-                    print("❌ Polling failed")
+                    print(" Polling failed")
                     RetryManager.shared.recordFailure()
                     self.pollStatus(for: id, apiKey: apiKey, retries: retries + 1, completion: completion)
                     return
                 }
 
-                print("📡 Polling result: \(status)")
+                print(" Polling result: \(status)")
 
                 switch status {
                 case "completed":
@@ -93,7 +93,7 @@ class TranscriptionService {
                     completion(json["text"] as? String)
                 case "error":
                     RetryManager.shared.recordFailure()
-                    completion("❌ Transcription failed")
+                    completion(" Transcription failed")
                 default:
                     self.pollStatus(for: id, apiKey: apiKey, retries: retries + 1, completion: completion)
                 }

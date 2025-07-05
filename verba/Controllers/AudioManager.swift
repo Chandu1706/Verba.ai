@@ -23,7 +23,6 @@ class AudioManager: ObservableObject {
     @Published var transcriptionStatus: String = ""
     @Published var canPlay: Bool = false
 
-    // MARK: - Recording Lifecycle
 
     func startRecording(with context: ModelContext) {
         self.modelContext = context
@@ -62,7 +61,7 @@ class AudioManager: ObservableObject {
             }
 
         } catch {
-            print("❌ Failed to start recording: \(error)")
+            print(" Failed to start recording: \(error)")
         }
     }
 
@@ -81,7 +80,7 @@ class AudioManager: ObservableObject {
 
     func playRecording() {
         guard let fileURL else {
-            print("⚠️ No file to play")
+            print(" No file to play")
             return
         }
 
@@ -89,14 +88,13 @@ class AudioManager: ObservableObject {
             player = try AVAudioPlayer(contentsOf: fileURL)
             player?.prepareToPlay()
             player?.play()
-            print("▶️ Playing: \(fileURL.lastPathComponent)")
+            print(" Playing: \(fileURL.lastPathComponent)")
         } catch {
-            print("❌ Playback failed: \(error)")
+            print(" Playback failed: \(error)")
         }
     }
 
-    // MARK: - Audio Session Config
-
+    
     private func configureAudioSession() throws {
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
@@ -104,7 +102,7 @@ class AudioManager: ObservableObject {
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { notification in
             if let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                let reasonEnum = AVAudioSession.RouteChangeReason(rawValue: reason) {
-                print("🔄 Audio route changed: \(reasonEnum)")
+                print(" Audio route changed: \(reasonEnum)")
             }
         }
 
@@ -117,37 +115,37 @@ class AudioManager: ObservableObject {
                 print("⏸ Interrupted — stopping...")
                 self.stopRecording()
             case .ended:
-                print("✅ Interruption ended")
+                print(" Interruption ended")
             default:
                 break
             }
         }
     }
 
-    // MARK: - Transcription
+
 
     private func segmentAndSend(urlOverride: URL? = nil) {
         guard let modelContext else {
-            print("🚫 No SwiftData context available")
+            print(" No SwiftData context available")
             return
         }
 
         guard let apiKey = Bundle.main.infoDictionary?["ASSEMBLY_API_KEY"] as? String, !apiKey.isEmpty else {
-            print("🚨 Missing or invalid ASSEMBLY_API_KEY in Info.plist")
+            print(" Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             transcriptionStatus = "Missing API Key"
             return
         }
 
         // 🔍 DEBUG: Print masked key
         let maskedKey = String(apiKey.prefix(4)) + "••••" + String(apiKey.suffix(2))
-        print("🔐 Loaded API Key: \(maskedKey)")
+        print(" Loaded API Key: \(maskedKey)")
 
         guard let segmentURL = urlOverride ?? fileURL else {
-            print("🚫 No segment file found.")
+            print(" No segment file found.")
             return
         }
 
-        print("📤 Sending segment for transcription: \(segmentURL.lastPathComponent)")
+        print(" Sending segment for transcription: \(segmentURL.lastPathComponent)")
         transcriptionStatus = "Transcribing..."
 
         TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: segmentURL, apiKey: apiKey) { transcriptionText in
@@ -156,7 +154,7 @@ class AudioManager: ObservableObject {
                 modelContext.insert(session)
 
                 self.transcriptionStatus = transcriptionText ?? " Transcription failed"
-                print("✅ Saved session: \(session.fileName)")
+                print(" Saved session: \(session.fileName)")
             }
         }
     }
