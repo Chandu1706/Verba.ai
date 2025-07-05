@@ -5,9 +5,13 @@
 //  Created by Chandu Korubilli on 7/5/25.
 //
 
+
 import Foundation
 import AVFoundation
 import SwiftData
+
+
+
 
 class AudioManager: ObservableObject {
     private var engine = AVAudioEngine()
@@ -16,12 +20,17 @@ class AudioManager: ObservableObject {
     private var fileURL: URL?
     private var player: AVAudioPlayer?
     private var timer: Timer?
+
     private var modelContext: ModelContext?
 
     @Published var isRecording = false
     @Published var currentInputLevel: Float = 0.0
+
+
+
     @Published var transcriptionStatus: String = ""
     @Published var canPlay: Bool = false
+
 
 
     func startRecording(with context: ModelContext) {
@@ -30,16 +39,20 @@ class AudioManager: ObservableObject {
         do {
             try configureAudioSession()
 
+
             let format = engine.inputNode.outputFormat(forBus: 0)
             let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             let timestamp = ISO8601DateFormatter().string(from: Date())
             fileURL = docDir.appendingPathComponent("recording_\(timestamp).caf")
+
             guard let fileURL else { return }
+
 
             file = try AVAudioFile(forWriting: fileURL, settings: format.settings)
 
             engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 try? self.file?.write(from: buffer)
+
 
                 if let channelData = buffer.floatChannelData?[0] {
                     let frameLength = Int(buffer.frameLength)
@@ -53,6 +66,7 @@ class AudioManager: ObservableObject {
 
             try engine.start()
             isRecording = true
+
             transcriptionStatus = " Recording..."
             canPlay = false
 
@@ -62,12 +76,14 @@ class AudioManager: ObservableObject {
 
         } catch {
             print(" Failed to start recording: \(error)")
+
         }
     }
 
     func stopRecording() {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+
         timer?.invalidate()
         isRecording = false
         transcriptionStatus = " Recording stopped"
@@ -81,6 +97,7 @@ class AudioManager: ObservableObject {
     func playRecording() {
         guard let fileURL else {
             print(" No file to play")
+
             return
         }
 
@@ -88,6 +105,7 @@ class AudioManager: ObservableObject {
             player = try AVAudioPlayer(contentsOf: fileURL)
             player?.prepareToPlay()
             player?.play()
+
             print(" Playing: \(fileURL.lastPathComponent)")
         } catch {
             print(" Playback failed: \(error)")
@@ -95,9 +113,11 @@ class AudioManager: ObservableObject {
     }
 
     
+
     private func configureAudioSession() throws {
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
+
 
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { notification in
             if let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
@@ -108,19 +128,23 @@ class AudioManager: ObservableObject {
 
         NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { notification in
             guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
             switch type {
             case .began:
+
                 print("⏸ Interrupted — stopping...")
                 self.stopRecording()
             case .ended:
                 print(" Interruption ended")
             default:
+
                 break
             }
         }
     }
+
 
 
 
@@ -159,4 +183,5 @@ class AudioManager: ObservableObject {
         }
     }
 }
+
 

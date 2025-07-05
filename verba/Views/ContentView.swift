@@ -27,12 +27,15 @@ struct ContentView: View {
                 .foregroundColor(.gray)
 
             // Start / Stop Recording Button
+
             Button(audioManager.isRecording ? " Stop Recording" : " Start Recording") {
                 if audioManager.isRecording {
                     audioManager.stopRecording()
                 } else {
                     audioManager.startRecording(with: modelContext)
                 }
+
+
             }
             .padding()
             .frame(maxWidth: .infinity)
@@ -43,17 +46,22 @@ struct ContentView: View {
 
             // Playback last recording
             Button(" Play Last Recording") {
+
                 audioManager.playRecording()
             }
             .disabled(!audioManager.canPlay)
             .padding()
             .frame(maxWidth: .infinity)
+
             .background(audioManager.canPlay ? Color.blue : Color.gray)
+
             .foregroundColor(.white)
             .clipShape(Capsule())
         }
         .padding()
+
         .navigationTitle("Audio Recorder")
+
     }
 }
 
