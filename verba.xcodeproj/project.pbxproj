@@ -53,11 +53,6 @@
 			path = verbaTests;
 			sourceTree = "<group>";
 		};
-		FD53FDFD2E18F17E008AB543 /* verbaUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = verbaUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -90,7 +85,6 @@
 			children = (
 				FD53FDE22E18F17C008AB543 /* verba */,
 				FD53FDF32E18F17E008AB543 /* verbaTests */,
-				FD53FDFD2E18F17E008AB543 /* verbaUITests */,
 				FD53FDE12E18F17C008AB543 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -166,9 +160,6 @@
 			dependencies = (
 				FD53FDFC2E18F17E008AB543 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				FD53FDFD2E18F17E008AB543 /* verbaUITests */,
-			);
 			name = verbaUITests;
 			packageProductDependencies = (
 			);
@@ -191,6 +182,7 @@
 					};
 					FD53FDEF2E18F17E008AB543 = {
 						CreatedOnToolsVersion = 16.4;
+						LastSwiftMigration = 1640;
 						TestTargetID = FD53FDDF2E18F17C008AB543;
 					};
 					FD53FDF92E18F17E008AB543 = {
@@ -492,6 +484,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9GWU8L8HK6;
@@ -504,6 +497,8 @@
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "verbaTests/Unit/verbaTests-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/verba.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/verba";
@@ -515,6 +510,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 9GWU8L8HK6;
@@ -527,6 +523,7 @@
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
 				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = "verbaTests/Unit/verbaTests-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/verba.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/verba";
