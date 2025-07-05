@@ -1,8 +1,3 @@
-//
-//  SessionListView.swift
-//  verba
-//
-
 import SwiftUI
 import SwiftData
 
@@ -12,22 +7,43 @@ struct SessionListView: View {
     @State private var isLoading = false
     @State private var offset = 0
     @State private var searchText = ""
+
     private let pageSize = 50
 
+    var filteredSessions: [RecordingSession] {
+        if searchText.isEmpty {
+            return sessions
+        } else {
+            return sessions.filter {
+                $0.fileName.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+
     var body: some View {
-        NavigationView {
+        NavigationStack {
             List {
-                ForEach(filteredSessions(), id: \ .id) { session in
+                ForEach(filteredSessions, id: \.id) { session in
                     NavigationLink(destination: SessionDetailView(session: session)) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(session.fileName)
                                 .font(.headline)
-                            Text("\(session.createdAt.formatted(date: .abbreviated, time: .shortened))")
+
+                            Text(session.createdAt.formatted(date: .abbreviated, time: .shortened))
                                 .font(.caption)
                                 .foregroundColor(.gray)
+
+                            if let badge = badgeFor(session: session) {
+                                Text(badge.label)
+                                    .font(.caption2)
+                                    .padding(4)
+                                    .background(badge.color)
+                                    .foregroundColor(.white)
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                            }
                         }
                         .onAppear {
-                            if session == sessions.last {
+                            if session == filteredSessions.last {
                                 loadMoreSessions()
                             }
                         }
@@ -37,13 +53,16 @@ struct SessionListView: View {
                 if isLoading {
                     HStack {
                         Spacer()
-                        ProgressView("Loading...")
+                        ProgressView("Loading more...")
                         Spacer()
                     }
                 }
             }
             .navigationTitle("Recorded Sessions")
-            .searchable(text: $searchText, prompt: "Search transcriptions")
+            .searchable(text: $searchText)
+            .refreshable {
+                refreshSessions()
+            }
             .onAppear {
                 if sessions.isEmpty {
                     loadMoreSessions()
@@ -52,10 +71,7 @@ struct SessionListView: View {
         }
     }
 
-    private func filteredSessions() -> [RecordingSession] {
-        guard !searchText.isEmpty else { return sessions }
-        return DataManager.shared.searchSessions(matching: searchText, context: modelContext)
-    }
+    // MARK: - Load & Refresh
 
     private func loadMoreSessions() {
         guard !isLoading else { return }
@@ -67,10 +83,29 @@ struct SessionListView: View {
                 limit: pageSize,
                 context: modelContext
             )
-
             self.sessions.append(contentsOf: newSessions)
             self.offset += newSessions.count
             self.isLoading = false
+        }
+    }
+
+    private func refreshSessions() {
+        Task { @MainActor in
+            self.sessions = DataManager.shared.fetchSessions(offset: 0, limit: offset + pageSize, context: modelContext)
+        }
+    }
+
+    // MARK: - Badge Logic
+
+    private func badgeFor(session: RecordingSession) -> (label: String, color: Color)? {
+        let segments = session.segments
+
+        if segments.isEmpty {
+            return ("Pending", .yellow)
+        } else if segments.contains(where: { $0.transcription.lowercased().contains("failed") }) {
+            return ("Failed", .red)
+        } else {
+            return ("Complete", .green)
         }
     }
 }
