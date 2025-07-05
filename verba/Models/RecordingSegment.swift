@@ -1,23 +1,23 @@
-//
-//  RecordingSegment.swift
-//  verba
-//
-//  Created by Chandu Korubilli on 7/5/25.
-//
 import Foundation
 import SwiftData
 
 @Model
 class RecordingSegment {
-    var id: UUID
+    @Attribute(.unique) var id = UUID()
     var fileName: String
-    var transcription: String?
-    var retryCount: Int
+    var transcription: String
+    var createdAt: Date
 
-    init(fileName: String, transcription: String? = nil, retryCount: Int = 0) {
-        self.id = UUID()
+    @Relationship var session: RecordingSession?
+    var sessionID: UUID?
+
+    init(fileName: String, transcription: String, createdAt: Date = Date(), session: RecordingSession? = nil) {
         self.fileName = fileName
         self.transcription = transcription
-        self.retryCount = retryCount
+        self.createdAt = createdAt
+        self.session = session
+        self.sessionID = session?.id
     }
 }
+
+

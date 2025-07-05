@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import SwiftData 
+import SwiftData
 
 class RetryQueue {
     static let shared = RetryQueue()
@@ -16,13 +16,17 @@ class RetryQueue {
         pendingSegments.append(url)
     }
 
-    func flush(using apiKey: String, context: ModelContext) {
+    func flush(using apiKey: String, context: ModelContext, session: RecordingSession) {
         guard NetworkMonitor.shared.isConnected else { return }
 
         for url in pendingSegments {
             TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: url, apiKey: apiKey) { text in
-                let session = RecordingSegment(fileName: url.lastPathComponent, transcription: text)
-                context.insert(session)
+                let segment = RecordingSegment(
+                    fileName: url.lastPathComponent,
+                    transcription: text ?? "Transcription failed",
+                    session: session
+                )
+                context.insert(segment)
             }
         }
 

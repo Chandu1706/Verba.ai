@@ -10,11 +10,17 @@ import SwiftData
 
 @main
 struct verbaApp: App {
+    // Shared SwiftData container including both models
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            RecordingSession.self,
+            RecordingSegment.self
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        let modelConfiguration = ModelConfiguration(
+            schema: schema,
+            isStoredInMemoryOnly: false
+        )
 
         do {
             return try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -26,7 +32,9 @@ struct verbaApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .modelContext(sharedModelContainer.mainContext) // Inject context for view access
         }
         .modelContainer(sharedModelContainer)
     }
 }
+

@@ -2,8 +2,6 @@
 //  AudioManager.swift
 //  verba
 //
-//  Created by Chandu Korubilli on 7/5/25.
-//
 
 import Foundation
 import AVFoundation
@@ -18,6 +16,8 @@ class AudioManager: ObservableObject {
     private var timer: Timer?
     private var modelContext: ModelContext?
 
+    private var currentSession: RecordingSession?
+
     @Published var isRecording = false
     @Published var currentInputLevel: Float = 0.0
     @Published var transcriptionStatus: String = ""
@@ -26,13 +26,19 @@ class AudioManager: ObservableObject {
 
     func startRecording(with context: ModelContext) {
         self.modelContext = context
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+
+        // Create empty session with default content
+        let session = RecordingSession(fileName: "Session_\(timestamp)", createdAt: Date())
+
+        self.currentSession = session
+        context.insert(session)
 
         do {
             try configureAudioSession()
 
             let format = engine.inputNode.outputFormat(forBus: 0)
             let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            let timestamp = ISO8601DateFormatter().string(from: Date())
             fileURL = docDir.appendingPathComponent("recording_\(timestamp).caf")
             guard let fileURL else { return }
 
@@ -76,6 +82,8 @@ class AudioManager: ObservableObject {
         if let fileURL = fileURL {
             segmentAndSend(urlOverride: fileURL)
         }
+
+        currentSession = nil
     }
 
     func playRecording() {
@@ -94,7 +102,7 @@ class AudioManager: ObservableObject {
         }
     }
 
-    
+
     private func configureAudioSession() throws {
         try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
         try session.setActive(true)
@@ -112,7 +120,7 @@ class AudioManager: ObservableObject {
 
             switch type {
             case .began:
-                print("⏸ Interrupted — stopping...")
+                print(" Interrupted — stopping...")
                 self.stopRecording()
             case .ended:
                 print(" Interruption ended")
@@ -122,11 +130,11 @@ class AudioManager: ObservableObject {
         }
     }
 
-
+  
 
     private func segmentAndSend(urlOverride: URL? = nil) {
-        guard let modelContext else {
-            print(" No SwiftData context available")
+        guard let modelContext, let currentSession else {
+            print(" SwiftData context or session missing")
             return
         }
 
@@ -136,25 +144,28 @@ class AudioManager: ObservableObject {
             return
         }
 
-        // 🔍 DEBUG: Print masked key
-        let maskedKey = String(apiKey.prefix(4)) + "••••" + String(apiKey.suffix(2))
-        print(" Loaded API Key: \(maskedKey)")
-
         guard let segmentURL = urlOverride ?? fileURL else {
             print(" No segment file found.")
             return
         }
 
+        let maskedKey = String(apiKey.prefix(4)) + "...." + String(apiKey.suffix(2))
+        print(" Loaded API Key: \(maskedKey)")
         print(" Sending segment for transcription: \(segmentURL.lastPathComponent)")
+
         transcriptionStatus = "Transcribing..."
 
         TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: segmentURL, apiKey: apiKey) { transcriptionText in
             DispatchQueue.main.async {
-                let session = RecordingSegment(fileName: segmentURL.lastPathComponent, transcription: transcriptionText ?? "Transcription failed")
-                modelContext.insert(session)
+                let segment = RecordingSegment(
+                    fileName: segmentURL.lastPathComponent,
+                    transcription: transcriptionText ?? "Transcription failed",
+                    session: currentSession
+                )
+                modelContext.insert(segment)
 
-                self.transcriptionStatus = transcriptionText ?? " Transcription failed"
-                print(" Saved session: \(session.fileName)")
+                self.transcriptionStatus = transcriptionText ?? "Transcription failed"
+                print(" Saved segment: \(segment.fileName)")
             }
         }
     }
