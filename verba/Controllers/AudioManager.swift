@@ -7,9 +7,9 @@ import Foundation
 import AVFoundation
 import SwiftData
 
+@MainActor
 class AudioManager: ObservableObject {
     private var engine = AVAudioEngine()
-    private var eqNode = AVAudioUnitEQ(numberOfBands: 1)
     private var file: AVAudioFile?
     private let session = AVAudioSession.sharedInstance()
     private var fileURL: URL?
@@ -24,37 +24,33 @@ class AudioManager: ObservableObject {
     @Published var canPlay: Bool = false
     @Published var isPaused = false
     @Published var isTranscribing: Bool = false
-    @Published var showError = false
-    @Published var errorMessage = ""
-    @Published var isEQEnabled: Bool = false
+    @Published var showError: Bool = false
+    @Published var errorMessage: String = ""
 
-
-    func startRecording(with context: ModelContext) {
+    func startRecording(with context: ModelContext) async {
         self.modelContext = context
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let nextIndex = DataManager.shared.nextSessionIndex(context: context)
+        let fileName = "Session \(nextIndex)"
+        _ = ISO8601DateFormatter().string(from: Date())
 
-        let session = RecordingSession(fileName: "Session_\(timestamp)", createdAt: Date())
+        let session = RecordingSession(fileName: fileName, createdAt: Date())
         self.currentSession = session
         context.insert(session)
 
         do {
             try configureAudioSession()
-            try checkStorageSpace()
+            try checkDiskSpace()
 
             let format = engine.inputNode.outputFormat(forBus: 0)
-            fileURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("recording_\(timestamp).caf")
+            let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            fileURL = docDir.appendingPathComponent("\(fileName).caf")
             guard let fileURL else { return }
 
             file = try AVAudioFile(forWriting: fileURL, settings: format.settings)
 
-            setupEqualizer()
-            engine.attach(eqNode)
+            engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+                guard let self else { return }
 
-            engine.connect(engine.inputNode, to: eqNode, format: format)
-            engine.connect(eqNode, to: engine.mainMixerNode, format: format)
-
-            engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 try? self.file?.write(from: buffer)
 
                 if let channelData = buffer.floatChannelData?[0] {
@@ -73,13 +69,14 @@ class AudioManager: ObservableObject {
             canPlay = false
 
             timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
-                self.segmentAndSend()
+                Task { @MainActor in
+                    self.segmentAndSend()
+                }
             }
 
         } catch {
-            showError = true
-            errorMessage = "Failed to start recording: \(error.localizedDescription)"
-            print(" \(error)")
+            transcriptionStatus = "Failed to record: \(error.localizedDescription)"
+            print("❌ Failed to start recording: \(error)")
         }
     }
 
@@ -95,10 +92,10 @@ class AudioManager: ObservableObject {
             try engine.start()
             isPaused = false
             transcriptionStatus = "Resumed"
-            print(" Resumed recording")
+            print("▶️ Resumed recording")
         } catch {
-            showError = true
-            errorMessage = "Failed to resume: \(error.localizedDescription)"
+            transcriptionStatus = "Failed to resume: \(error.localizedDescription)"
+            print("❌ Failed to resume: \(error)")
         }
     }
 
@@ -111,6 +108,9 @@ class AudioManager: ObservableObject {
         transcriptionStatus = "Recording stopped"
         canPlay = true
 
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: nil)
+
         if let fileURL = fileURL {
             segmentAndSend(urlOverride: fileURL)
         }
@@ -120,7 +120,7 @@ class AudioManager: ObservableObject {
 
     func playRecording() {
         guard let fileURL else {
-            print("No file to play")
+            print("⛔️ No file to play")
             return
         }
 
@@ -128,78 +128,94 @@ class AudioManager: ObservableObject {
             player = try AVAudioPlayer(contentsOf: fileURL)
             player?.prepareToPlay()
             player?.play()
-            print(" Playing: \(fileURL.lastPathComponent)")
+            print("▶️ Playing: \(fileURL.lastPathComponent)")
         } catch {
-            print(" Playback failed: \(error)")
+            transcriptionStatus = "Playback failed"
+            print("❌ Playback failed: \(error)")
         }
-    }
-
-    private func setupEqualizer() {
-        let band = eqNode.bands[0]
-        band.filterType = .lowPass
-        band.frequency = 1200 // Hz
-        band.bandwidth = 0.5
-        band.gain = 0
-        band.bypass = false
-        eqNode.globalGain = 0
     }
 
     private func configureAudioSession() throws {
-        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
-        try session.setActive(true)
+        try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
 
-        NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { notification in
-            if let reason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-               let reasonEnum = AVAudioSession.RouteChangeReason(rawValue: reason) {
-                print(" Audio route changed: \(reasonEnum)")
+        NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange(_:)), name: AVAudioSession.routeChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleInterruption(_:)), name: AVAudioSession.interruptionNotification, object: nil)
+    }
+
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        print("🔄 Audio route changed: \(reason)")
+
+        switch reason {
+        case .oldDeviceUnavailable:
+            if isRecording && !isPaused {
+                pauseRecording()
             }
-        }
-
-        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { notification in
-            guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-
-            switch type {
-            case .began:
-                print(" Interrupted — stopping...")
-                self.stopRecording()
-            case .ended:
-                print(" Interruption ended")
-            default:
-                break
+        case .newDeviceAvailable:
+            if isPaused {
+                resumeRecording()
             }
+        default:
+            break
         }
     }
 
-    private func checkStorageSpace() throws {
-        let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let values = try docDir.resourceValues(forKeys: [.volumeAvailableCapacityKey])
+    @objc private func handleInterruption(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-        guard let available = values.volumeAvailableCapacity, available > 10 * 1024 * 1024 else {
-            throw NSError(domain: "AudioManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Not enough disk space to record audio."])
+        switch type {
+        case .began:
+            print("🛑 Interruption began")
+            if isRecording {
+                pauseRecording()
+            }
+        case .ended:
+            if let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt {
+                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                if options.contains(.shouldResume), isPaused {
+                    resumeRecording()
+                }
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    private func checkDiskSpace() throws {
+        let docDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let resourceValues = try docDir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        if let availableSpace = resourceValues.volumeAvailableCapacityForImportantUsage,
+           availableSpace < 10_000_000 {
+            throw NSError(domain: "AudioManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Insufficient disk space"])
         }
     }
 
     private func segmentAndSend(urlOverride: URL? = nil) {
         guard let modelContext, let currentSession else {
-            print("SwiftData context or session missing")
+            print("⛔️ SwiftData context or session missing")
             return
         }
 
         guard let apiKey = Bundle.main.infoDictionary?["ASSEMBLY_API_KEY"] as? String, !apiKey.isEmpty else {
             transcriptionStatus = "Missing API Key"
-            print(" Missing or invalid ASSEMBLY_API_KEY in Info.plist")
+            print("❌ Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             return
         }
 
         guard let segmentURL = urlOverride ?? fileURL else {
-            print(" No segment file found.")
+            print("❌ No segment file found.")
             return
         }
 
         let maskedKey = String(apiKey.prefix(4)) + "...." + String(apiKey.suffix(2))
-        print(" Loaded API Key: \(maskedKey)")
-        print(" Sending segment for transcription: \(segmentURL.lastPathComponent)")
+        print("🔐 Loaded API Key: \(maskedKey)")
+        print("📤 Sending segment for transcription: \(segmentURL.lastPathComponent)")
 
         transcriptionStatus = "Transcribing..."
         isTranscribing = true
@@ -216,7 +232,7 @@ class AudioManager: ObservableObject {
 
                 self.transcriptionStatus = transcriptionText ?? "Transcription failed"
                 self.isTranscribing = false
-                print(" Saved segment: \(segment.fileName)")
+                print("✅ Saved segment: \(segment.fileName)")
             }
         }
     }

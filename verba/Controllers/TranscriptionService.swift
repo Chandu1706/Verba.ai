@@ -4,7 +4,7 @@
 //
 
 import Foundation
-
+import Speech
 class TranscriptionService {
     static let shared = TranscriptionService()
 
@@ -21,11 +21,29 @@ class TranscriptionService {
             case .success(let uploadedURL):
                 self?.startTranscription(apiKey: apiKey, audioURL: uploadedURL, completion: completion)
             case .failure(let error):
-                print("❌ Upload failed: \(error.localizedDescription)")
+                print(" Upload failed: \(error.localizedDescription)")
                 completion("Upload failed")
             }
         }
     }
+    func transcribeWithAppleSpeech(audioURL: URL, completion: @escaping (String?) -> Void) {
+        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        guard let recognizer = recognizer, recognizer.isAvailable else {
+            completion("Apple speech recognition not available")
+            return
+        }
+
+        let request = SFSpeechURLRecognitionRequest(url: audioURL)
+        recognizer.recognitionTask(with: request) { result, error in
+            if let error = error {
+                print(" Apple speech error: \(error)")
+                completion(nil)
+            } else if let result = result, result.isFinal {
+                completion(result.bestTranscription.formattedString)
+            }
+        }
+    }
+
 
     private func uploadAudio(audioURL: URL, apiKey: String, completion: @escaping (Result<String, Error>) -> Void) {
         guard let audioData = try? Data(contentsOf: audioURL) else {
@@ -67,7 +85,7 @@ class TranscriptionService {
 
         session.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print("❌ Transcription request failed: \(error.localizedDescription)")
+                print("Transcription request failed: \(error.localizedDescription)")
                 completion("Transcription request failed")
                 return
             }
@@ -79,14 +97,14 @@ class TranscriptionService {
                 return
             }
 
-            print("🟡 Transcription started with ID: \(id)")
+            print("Transcription started with ID: \(id)")
             self?.pollTranscription(apiKey: apiKey, id: id, retries: 0, completion: completion)
         }.resume()
     }
 
     private func pollTranscription(apiKey: String, id: String, retries: Int, completion: @escaping (String?) -> Void) {
         guard retries < maxRetries else {
-            print("⛔️ Max retries reached for transcription ID: \(id)")
+            print(" Max retries reached for transcription ID: \(id)")
             completion("Timed out")
             return
         }
@@ -98,7 +116,7 @@ class TranscriptionService {
 
         session.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print("❌ Polling error: \(error.localizedDescription)")
+                print(" Polling error: \(error.localizedDescription)")
                 completion("Polling failed")
                 return
             }
@@ -111,14 +129,14 @@ class TranscriptionService {
             }
 
             if status == "completed", let text = responseJSON["text"] as? String {
-                print("✅ Transcription complete: \(text.prefix(60))...")
+                print(" Transcription complete: \(text.prefix(60))...")
                 completion(text)
             } else if status == "error" {
                 let errorMsg = responseJSON["error"] as? String ?? "Unknown error"
-                print("❌ Transcription failed: \(errorMsg)")
+                print(" Transcription failed: \(errorMsg)")
                 completion("Transcription error: \(errorMsg)")
             } else {
-                print("🔁 Status: \(status). Retrying in \(self?.pollingInterval ?? 3)s...")
+                print("Status: \(status). Retrying in \(self?.pollingInterval ?? 3)s...")
                 DispatchQueue.global().asyncAfter(deadline: .now() + (self?.pollingInterval ?? 3)) {
                     self?.pollTranscription(apiKey: apiKey, id: id, retries: retries + 1, completion: completion)
                 }

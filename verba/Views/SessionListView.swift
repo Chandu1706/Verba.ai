@@ -5,12 +5,14 @@ import Foundation
 
 struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
+    @State private var allSessions: [RecordingSession] = []
     @State private var sessions: [RecordingSession] = []
     @State private var isLoading = false
     @State private var offset = 0
     @State private var searchText = ""
     @State private var exportFileURL: URL? = nil
     @State private var selectedSession: RecordingSession? = nil
+    @State private var expandedSessionIDs: Set<PersistentIdentifier> = []
     @State private var showAlert = false
 
     private let pageSize = 50
@@ -24,27 +26,56 @@ struct SessionListView: View {
                     ForEach(groupedSessions.keys.sorted(by: >), id: \.self) { date in
                         Section(header: Text(formatted(date))) {
                             ForEach(groupedSessions[date] ?? [], id: \.persistentModelID) { session in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text(session.fileName)
-                                                .font(.headline)
-                                            Spacer()
-                                            BadgeView(count: session.segments.count)
+                                VStack(alignment: .leading, spacing: 8) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            HStack {
+                                                Text(session.fileName)
+                                                    .font(.headline)
+                                                    .accessibilityLabel("Session filename \(session.fileName)")
+                                                Spacer()
+                                                BadgeView(count: session.segments.count)
+                                            }
+
+                                            Text(session.createdAt.formatted(date: .omitted, time: .shortened))
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                                .accessibilityLabel("Created at \(session.createdAt.formatted(date: .long, time: .shortened))")
                                         }
-                                        Text(session.createdAt.formatted(date: .omitted, time: .shortened))
-                                            .font(.caption)
-                                            .foregroundColor(.gray)
+
+                                        if selectedSession?.persistentModelID == session.persistentModelID {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                                .accessibilityLabel("Selected for export")
+                                        }
                                     }
-                                    Spacer()
-                                    if selectedSession?.persistentModelID == session.persistentModelID {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        toggleExpansion(for: session)
                                     }
-                                }
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    selectedSession = session
+                                    .onLongPressGesture {
+                                        if selectedSession?.persistentModelID == session.persistentModelID {
+                                            selectedSession = nil
+                                        } else {
+                                            selectedSession = session
+                                        }
+                                    }
+
+                                    if isExpanded(session) {
+                                        ForEach(session.segments, id: \.persistentModelID) { segment in
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(segment.fileName)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.secondary)
+                                                    .accessibilityLabel("Segment \(segment.fileName)")
+
+                                                Text(segment.transcription)
+                                                    .font(.body)
+                                                    .accessibilityLabel("Transcription \(segment.transcription)")
+                                            }
+                                            .padding(.vertical, 4)
+                                        }
+                                    }
                                 }
                                 .onAppear {
                                     if session == sessions.last {
@@ -67,12 +98,12 @@ struct SessionListView: View {
                     }
                 }
                 .navigationTitle("Recorded Sessions")
-                .searchable(text: $searchText, prompt: "Search transcriptions")
+                .searchable(text: $searchText, prompt: "Search transcriptions or filenames")
                 .onChange(of: searchText) { _, _ in
-                    Task { await refreshSessions() }
+                    filterSessions()
                 }
                 .onAppear {
-                    if sessions.isEmpty {
+                    if allSessions.isEmpty {
                         Task { await loadMoreSessions() }
                     }
                 }
@@ -101,16 +132,19 @@ struct SessionListView: View {
                 .alert("Please select a session to export", isPresented: $showAlert) {
                     Button("OK", role: .cancel) { }
                 }
-
-                if let fileToShare = exportFileURL {
-                    ShareLink(item: fileToShare, preview: SharePreview("Exported Session", icon: Image(systemName: "doc"))) {
-                        Text("Tap to Share Exported Session")
-                            .font(.caption)
-                            .padding(.bottom)
-                            .foregroundColor(.blue)
-                    }
-                }
             }
+        }
+    }
+
+    private func isExpanded(_ session: RecordingSession) -> Bool {
+        expandedSessionIDs.contains(session.persistentModelID)
+    }
+
+    private func toggleExpansion(for session: RecordingSession) {
+        if expandedSessionIDs.contains(session.persistentModelID) {
+            expandedSessionIDs.remove(session.persistentModelID)
+        } else {
+            expandedSessionIDs.insert(session.persistentModelID)
         }
     }
 
@@ -125,34 +159,48 @@ struct SessionListView: View {
         guard !isLoading else { return }
         isLoading = true
 
-        let newSessions: [RecordingSession]
-        if searchText.isEmpty {
-            newSessions = DataManager.shared.fetchSessions(offset: offset, limit: pageSize, context: modelContext)
-        } else {
-            newSessions = DataManager.shared.searchSessions(matching: searchText, context: modelContext)
-        }
+        let newSessions = DataManager.shared.fetchSessions(offset: offset, limit: pageSize, context: modelContext)
 
         await MainActor.run {
-            sessions.append(contentsOf: newSessions)
+            allSessions.append(contentsOf: newSessions)
             offset += newSessions.count
             isLoading = false
+            filterSessions()
         }
     }
 
     private func refreshSessions() async {
         await MainActor.run {
             offset = 0
+            allSessions.removeAll()
             sessions.removeAll()
             selectedSession = nil
             exportFileURL = nil
+            expandedSessionIDs.removeAll()
         }
         await loadMoreSessions()
+    }
+
+    private func filterSessions() {
+        if searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+            sessions = allSessions
+        } else {
+            let lowercased = searchText.lowercased()
+            sessions = allSessions.filter { session in
+                session.fileName.lowercased().contains(lowercased) ||
+                session.segments.contains { segment in
+                    segment.transcription.lowercased().contains(lowercased) ||
+                    segment.fileName.lowercased().contains(lowercased)
+                }
+            }
+        }
     }
 
     private func deleteSessions(at offsets: IndexSet, in group: [RecordingSession]) {
         for index in offsets {
             let session = group[index]
             DataManager.shared.deleteSession(session, context: modelContext)
+            allSessions.removeAll { $0.persistentModelID == session.persistentModelID }
             sessions.removeAll { $0.persistentModelID == session.persistentModelID }
             if selectedSession?.persistentModelID == session.persistentModelID {
                 selectedSession = nil
@@ -174,6 +222,13 @@ struct SessionListView: View {
         do {
             try csv.write(to: url, atomically: true, encoding: .utf8)
             exportFileURL = url
+
+            let activityVC = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            if let topController = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+                .first?.rootViewController {
+                topController.present(activityVC, animated: true)
+            }
         } catch {
             print("Failed to export session: \(error)")
         }
@@ -195,6 +250,7 @@ struct BadgeView: View {
             .padding(6)
             .background(Capsule().fill(Color.blue.opacity(0.8)))
             .foregroundColor(.white)
+            .accessibilityLabel("\(count) segments")
     }
 }
 

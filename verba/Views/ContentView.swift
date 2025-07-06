@@ -1,8 +1,3 @@
-//
-//  ContentView.swift
-//  verba
-//
-
 import SwiftUI
 import SwiftData
 
@@ -12,95 +7,99 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("Verba")
-                    .font(.system(size: 34, weight: .bold))
-                    .multilineTextAlignment(.center)
+            ScrollView {
+                VStack(spacing: 24) {
+                    VStack(spacing: 8) {
+                        Text("Verba.ai")
+                            .font(.system(size: 34, weight: .bold))
+                            .multilineTextAlignment(.center)
 
-                WaveformBar(level: audioManager.currentInputLevel)
-                    .frame(height: 20)
-                    .padding(.horizontal)
+                        Text("Welcome to Verba.ai — an audio transcribing tool")
+                            .font(.subheadline)
+                            .foregroundColor(.gray)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
 
-                if audioManager.isTranscribing {
-                    ProgressView("Transcribing...")
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .foregroundColor(.gray)
-                } else {
-                    Text(audioManager.transcriptionStatus)
-                        .font(.caption)
-                        .foregroundColor(.gray)
-                }
+                    WaveformBar(level: audioManager.currentInputLevel)
+                        .frame(height: 20)
+                        .padding(.horizontal)
 
-                // Enhancement toggle
-                Toggle("Enable Low-Pass Filter", isOn: $audioManager.isEQEnabled)
-                    .toggleStyle(SwitchToggleStyle(tint: .green))
-                    .padding(.horizontal)
+                    if audioManager.isTranscribing {
+                        ProgressView("Transcribing...")
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .foregroundColor(.gray)
+                    } else {
+                        Text(audioManager.transcriptionStatus)
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                    }
 
-                // Enhancement info
-                if audioManager.isEQEnabled {
-                    Text("Audio Enhancement: Low-pass filter active")
-                        .font(.caption2)
-                        .foregroundColor(.green)
-                }
-
-                HStack(spacing: 12) {
-                    Button(action: {
-                        if audioManager.isRecording {
-                            audioManager.stopRecording()
-                        } else {
-                            audioManager.startRecording(with: modelContext)
+                    HStack(spacing: 12) {
+                        Button(action: {
+                            Task {
+                                if audioManager.isRecording {
+                                    audioManager.stopRecording()
+                                } else {
+                                    await audioManager.startRecording(with: modelContext)
+                                }
+                            }
+                        }) {
+                            Text(audioManager.isRecording ? "Stop" : "Start")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(audioManager.isRecording ? Color.red : Color.green)
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
                         }
+
+                        Button(action: {
+                            if audioManager.isPaused {
+                                audioManager.resumeRecording()
+                            } else {
+                                audioManager.pauseRecording()
+                            }
+                        }) {
+                            Text(audioManager.isPaused ? "Resume" : "Pause")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(audioManager.isRecording ? Color.orange : Color.gray)
+                                .foregroundColor(.white)
+                                .clipShape(Capsule())
+                        }
+                        .disabled(!audioManager.isRecording)
+                    }
+
+                    Button(action: {
+                        audioManager.playRecording()
                     }) {
-                        Text(audioManager.isRecording ? "Stop" : "Start")
+                        Text("Play Last Recording")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(audioManager.isRecording ? Color.red : Color.green)
+                            .background(audioManager.canPlay ? Color.blue : Color.gray)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
+                    }
+                    .disabled(!audioManager.canPlay)
+
+                    NavigationLink(destination: SessionListView()) {
+                        Text("View Sessions")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.purple)
                             .foregroundColor(.white)
                             .clipShape(Capsule())
                     }
 
-                    Button(action: {
-                        if audioManager.isPaused {
-                            audioManager.resumeRecording()
-                        } else {
-                            audioManager.pauseRecording()
-                        }
-                    }) {
-                        Text(audioManager.isPaused ? "Resume" : "Pause")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(audioManager.isRecording ? Color.orange : Color.gray)
-                            .foregroundColor(.white)
-                            .clipShape(Capsule())
-                    }
-                    .disabled(!audioManager.isRecording)
+                    Spacer(minLength: 40)
                 }
-
-                Button(action: {
-                    audioManager.playRecording()
-                }) {
-                    Text("Play Last Recording")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(audioManager.canPlay ? Color.blue : Color.gray)
-                        .foregroundColor(.white)
-                        .clipShape(Capsule())
-                }
-                .disabled(!audioManager.canPlay)
-
-                NavigationLink(destination: SessionListView()) {
-                    Text("View Sessions")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.purple)
-                        .foregroundColor(.white)
-                        .clipShape(Capsule())
-                }
-
-                Spacer()
+                .padding()
             }
-            .padding()
-            .navigationTitle("Audio Recorder")
+        }
+        .alert("Error", isPresented: $audioManager.showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(audioManager.errorMessage)
         }
     }
 }
