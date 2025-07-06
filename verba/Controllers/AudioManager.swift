@@ -26,6 +26,7 @@ class AudioManager: ObservableObject {
     @Published var isTranscribing: Bool = false
     @Published var showError: Bool = false
     @Published var errorMessage: String = ""
+    @Published var recentTranscriptions: [String] = []
 
     func startRecording(with context: ModelContext) async {
         self.modelContext = context
@@ -229,6 +230,10 @@ class AudioManager: ObservableObject {
                     session: currentSession
                 )
                 modelContext.insert(segment)
+
+                // ✅ Store to recent list
+                self.recentTranscriptions.insert(segment.transcription, at: 0)
+                self.recentTranscriptions = Array(self.recentTranscriptions.prefix(5))
 
                 self.transcriptionStatus = transcriptionText ?? "Transcription failed"
                 self.isTranscribing = false

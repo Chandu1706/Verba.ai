@@ -91,6 +91,36 @@ struct ContentView: View {
                             .clipShape(Capsule())
                     }
 
+                    NavigationLink(destination: AboutView()) {
+                        Text("About Verba.ai")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(.secondarySystemBackground))
+                            .foregroundColor(.primary)
+                            .clipShape(Capsule())
+                    }
+                    NavigationLink(destination: SettingsView()) {
+                        Text("Settings")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(.secondarySystemBackground))
+                            .foregroundColor(.primary)
+                            .clipShape(Capsule())
+                    }
+                    if !audioManager.recentTranscriptions.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Recent Transcriptions")
+                                .font(.headline)
+                            ForEach(audioManager.recentTranscriptions.prefix(5), id: \.self) { line in
+                                Text("• \(line)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top)
+                    }
+
                     Spacer(minLength: 40)
                 }
                 .padding()

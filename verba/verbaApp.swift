@@ -10,6 +10,9 @@ import SwiftData
 
 @main
 struct verbaApp: App {
+    // App-wide settings for theme, audio, fallback, etc.
+    @StateObject private var settings = AppSettings.shared
+
     // Shared SwiftData container including both models
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -42,6 +45,7 @@ struct verbaApp: App {
         WindowGroup {
             ContentView()
                 .modelContext(sharedModelContainer.mainContext)
+                .preferredColorScheme(settings.themeMode.colorScheme) 
         }
         .modelContainer(sharedModelContainer)
     }
