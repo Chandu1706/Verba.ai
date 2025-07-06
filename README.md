@@ -150,7 +150,7 @@ Can I use this with Whisper or another model?
 
 
 ## Documentation
- 📄 [View Documentation (PDF)](./Docs/Verba_Documentation.pdf)
+ 📄 [View Documentation (PDF)](.verba/Docs/Verba.pdf)
  
 ## Contributors
 
