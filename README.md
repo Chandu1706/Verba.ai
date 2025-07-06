@@ -137,6 +137,8 @@ You can long-press a session to select it, then tap Export & Share to save the f
 •	Dark/light mode override
 •	Settings screen
 •	Swipe left on session to delete it
+  Widget support for the app
+
 
 ## FAQ
 
