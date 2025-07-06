@@ -100,6 +100,9 @@
 			exceptions = (
 				FD53FE802E19035B008AB543 /* Exceptions for "verba" folder in "verba" target */,
 			);
+			explicitFolders = (
+				Docs/Screenshots,
+			);
 			path = verba;
 			sourceTree = "<group>";
 		};
