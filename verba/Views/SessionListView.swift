@@ -3,10 +3,14 @@ import SwiftData
 import UniformTypeIdentifiers
 import Foundation
 
+/// Displays a list of recorded sessions, allows search, selection, and export.
 struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var allSessions: [RecordingSession] = []
-    @State private var sessions: [RecordingSession] = []
+
+
+
+    @State private var allSessions: [RecordingSession] = []     // Unfiltered dataset
+    @State private var sessions: [RecordingSession] = []        // Filtered sessions for display
     @State private var isLoading = false
     @State private var offset = 0
     @State private var searchText = ""
@@ -20,20 +24,24 @@ struct SessionListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                NetworkStatusBanner()
+                NetworkStatusBanner() // Custom banner for online/offline status
 
                 List {
+                    // Group sessions by date
                     ForEach(groupedSessions.keys.sorted(by: >), id: \.self) { date in
                         Section(header: Text(formatted(date))) {
                             ForEach(groupedSessions[date] ?? [], id: \.persistentModelID) { session in
                                 VStack(alignment: .leading, spacing: 8) {
+                                    // Session summary row
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
                                             HStack {
                                                 Text(session.fileName)
                                                     .font(.headline)
                                                     .accessibilityLabel("Session filename \(session.fileName)")
+
                                                 Spacer()
+
                                                 BadgeView(count: session.segments.count)
                                             }
 
@@ -43,6 +51,7 @@ struct SessionListView: View {
                                                 .accessibilityLabel("Created at \(session.createdAt.formatted(date: .long, time: .shortened))")
                                         }
 
+                                        // Highlight selected session
                                         if selectedSession?.persistentModelID == session.persistentModelID {
                                             Image(systemName: "checkmark.circle.fill")
                                                 .foregroundColor(.green)
@@ -54,6 +63,7 @@ struct SessionListView: View {
                                         toggleExpansion(for: session)
                                     }
                                     .onLongPressGesture {
+                                        // Toggle session selection
                                         if selectedSession?.persistentModelID == session.persistentModelID {
                                             selectedSession = nil
                                         } else {
@@ -61,6 +71,7 @@ struct SessionListView: View {
                                         }
                                     }
 
+                                    // Show transcription segments if expanded
                                     if isExpanded(session) {
                                         ForEach(session.segments, id: \.persistentModelID) { segment in
                                             VStack(alignment: .leading, spacing: 4) {
@@ -78,6 +89,7 @@ struct SessionListView: View {
                                     }
                                 }
                                 .onAppear {
+                                    // Load more sessions when reaching end
                                     if session == sessions.last {
                                         Task { await loadMoreSessions() }
                                     }
@@ -89,6 +101,7 @@ struct SessionListView: View {
                         }
                     }
 
+                    // Show loading spinner if fetching more
                     if isLoading {
                         HStack {
                             Spacer()
@@ -113,6 +126,7 @@ struct SessionListView: View {
 
                 Divider()
 
+                // Export & Share Button
                 Button(action: {
                     if let session = selectedSession {
                         exportAndShare(session)
@@ -136,18 +150,23 @@ struct SessionListView: View {
         }
     }
 
+
+
+    /// Determines whether a session's details should be expanded.
     private func isExpanded(_ session: RecordingSession) -> Bool {
         expandedSessionIDs.contains(session.persistentModelID)
     }
 
+    /// Toggles expanded state for a session row.
     private func toggleExpansion(for session: RecordingSession) {
-        if expandedSessionIDs.contains(session.persistentModelID) {
+        if isExpanded(session) {
             expandedSessionIDs.remove(session.persistentModelID)
         } else {
             expandedSessionIDs.insert(session.persistentModelID)
         }
     }
 
+    /// Groups sessions by date (year/month/day).
     private var groupedSessions: [Date: [RecordingSession]] {
         Dictionary(grouping: sessions) { session in
             let components = Calendar.current.dateComponents([.year, .month, .day], from: session.createdAt)
@@ -155,6 +174,7 @@ struct SessionListView: View {
         }
     }
 
+    /// Loads additional sessions (paged) from storage.
     private func loadMoreSessions() async {
         guard !isLoading else { return }
         isLoading = true
@@ -169,6 +189,7 @@ struct SessionListView: View {
         }
     }
 
+    /// Reloads all sessions (e.g. after search or pull-to-refresh).
     private func refreshSessions() async {
         await MainActor.run {
             offset = 0
@@ -181,6 +202,7 @@ struct SessionListView: View {
         await loadMoreSessions()
     }
 
+    /// Filters sessions by filename or transcription content.
     private func filterSessions() {
         if searchText.trimmingCharacters(in: .whitespaces).isEmpty {
             sessions = allSessions
@@ -196,6 +218,7 @@ struct SessionListView: View {
         }
     }
 
+    /// Deletes sessions both from storage and UI.
     private func deleteSessions(at offsets: IndexSet, in group: [RecordingSession]) {
         for index in offsets {
             let session = group[index]
@@ -209,6 +232,7 @@ struct SessionListView: View {
         }
     }
 
+    /// Exports a session's transcription data to a CSV and opens share sheet.
     private func exportAndShare(_ session: RecordingSession) {
         let fileName = session.fileName.replacingOccurrences(of: " ", with: "_")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(fileName).csv")
@@ -234,6 +258,7 @@ struct SessionListView: View {
         }
     }
 
+    /// Formats a Date object into a display string.
     private func formatted(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -241,6 +266,7 @@ struct SessionListView: View {
     }
 }
 
+/// Displays a rounded badge with the number of segments in a session.
 struct BadgeView: View {
     let count: Int
 

@@ -61,13 +61,13 @@ class AudioRecorder: NSObject, ObservableObject {
             do {
                 try file.write(from: buffer)
             } catch {
-                print("❌ Failed to write buffer: \(error)")
+                print("Failed to write buffer: \(error)")
             }
         }
 
         try engine.start()
         isRecording = true
-        print("🎙️ Started recording to \(url.lastPathComponent)")
+        print("Started recording to \(url.lastPathComponent)")
     }
 
     func stopRecording() {
@@ -76,7 +76,7 @@ class AudioRecorder: NSObject, ObservableObject {
         engine.stop()
         audioFile = nil
         isRecording = false
-        print("⏹️ Stopped recording")
+        print("Stopped recording")
     }
 
     func getRecordingURL() -> URL? {

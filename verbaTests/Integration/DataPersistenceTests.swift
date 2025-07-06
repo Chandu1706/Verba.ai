@@ -154,7 +154,7 @@ final class DataPersistenceTests: XCTestCase {
 
         if let freeSpace = values.volumeAvailableCapacity {
             print("Available capacity: \(freeSpace / (1024 * 1024)) MB")
-            XCTAssertTrue(freeSpace > 1_000_000, "⚠️ Simulated low storage scenario.")
+            XCTAssertTrue(freeSpace > 1_000_000, " Simulated low storage scenario.")
         } else {
             XCTFail("Failed to check volumeAvailableCapacity.")
         }
