@@ -4,25 +4,28 @@
 //
 //  Created by Chandu Korubilli on 7/5/25.
 //
-
 import SwiftUI
 
 struct WaveformBar: View {
-    var level: Float  // Expected 0.0 to 1.0
+    let level: Float
+    private let barCount = 40
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-
-                Rectangle()
-                    .fill(Color.green)
-                    .frame(width: CGFloat(level) * geometry.size.width)
-                    .animation(.linear(duration: 0.1), value: level)
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { index in
+                Capsule()
+                    .fill(Color.green.opacity(Double(index) / Double(barCount)))
+                    .frame(height: barHeight(for: index))
             }
-            .cornerRadius(4)
         }
-        .frame(height: 10)
+        .animation(.easeInOut(duration: 0.1), value: level)
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let normalized = CGFloat(level)
+        let center = CGFloat(barCount) / 2
+        let distance = abs(center - CGFloat(index))
+        return max(4, 40 * normalized - distance)
     }
 }
+

@@ -23,7 +23,7 @@ class DataManager {
         do {
             return try context.fetch(fetch)
         } catch {
-            print(" Failed to fetch sessions: \(error)")
+            print("Failed to fetch sessions: \(error)")
             return []
         }
     }
@@ -44,7 +44,7 @@ class DataManager {
 
         do {
             try context.save()
-            print(" Deleted all sessions")
+            print("Deleted all sessions")
         } catch {
             print("Failed to delete all sessions: \(error)")
         }
@@ -58,20 +58,59 @@ class DataManager {
             let segments = try context.fetch(segmentFetch)
 
             let matchedSessions = Set(segments.compactMap { $0.session })
+
             return matchedSessions.sorted(by: { $0.createdAt > $1.createdAt })
         } catch {
-            print(" Failed to search segments: \(error)")
+            print("Failed to search segments: \(error)")
+            return []
+        }
+    }
+
+    /// Advanced Search with keyword, startDate, endDate
+    func advancedSearch(keyword: String?, startDate: Date?, endDate: Date?, context: ModelContext) -> [RecordingSession] {
+        do {
+            var predicate: Predicate<RecordingSegment> = #Predicate { _ in true }
+
+            if let keyword = keyword, !keyword.isEmpty {
+                predicate = #Predicate { $0.transcription.localizedStandardContains(keyword) }
+            }
+
+            var fetch = FetchDescriptor<RecordingSegment>(predicate: predicate)
+
+            if let start = startDate, let end = endDate {
+                fetch.predicate = #Predicate {
+                    $0.transcription.localizedStandardContains(keyword ?? "") &&
+                    $0.createdAt >= start &&
+                    $0.createdAt <= end
+                }
+            } else if let start = startDate {
+                fetch.predicate = #Predicate {
+                    $0.transcription.localizedStandardContains(keyword ?? "") &&
+                    $0.createdAt >= start
+                }
+            } else if let end = endDate {
+                fetch.predicate = #Predicate {
+                    $0.transcription.localizedStandardContains(keyword ?? "") &&
+                    $0.createdAt <= end
+                }
+            }
+
+            let matchedSegments = try context.fetch(fetch)
+            let sessions = Set(matchedSegments.compactMap { $0.session })
+
+            return sessions.sorted(by: { $0.createdAt > $1.createdAt })
+        } catch {
+            print(" Failed advanced search: \(error)")
             return []
         }
     }
 
     func exportSessions(to url: URL, context: ModelContext) {
         let allSessions = fetchSessions(offset: 0, limit: Int.max, context: context)
-        var csv = "File Name,Segment Count\n"
+        var csv = "File Name,Transcription Count\n"
 
         for session in allSessions {
-            let segmentCount = session.segments.count
-            csv += "\(session.fileName),\(segmentCount)\n"
+            csv += "\(session.fileName),\"\(session.segments.count)\"\n"
         }
 
         do {

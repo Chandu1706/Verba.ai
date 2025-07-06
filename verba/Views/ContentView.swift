@@ -1,3 +1,8 @@
+//
+//  ContentView.swift
+//  verba
+//
+
 import SwiftUI
 import SwiftData
 
@@ -24,6 +29,18 @@ struct ContentView: View {
                     Text(audioManager.transcriptionStatus)
                         .font(.caption)
                         .foregroundColor(.gray)
+                }
+
+                // Enhancement toggle
+                Toggle("Enable Low-Pass Filter", isOn: $audioManager.isEQEnabled)
+                    .toggleStyle(SwitchToggleStyle(tint: .green))
+                    .padding(.horizontal)
+
+                // Enhancement info
+                if audioManager.isEQEnabled {
+                    Text("Audio Enhancement: Low-pass filter active")
+                        .font(.caption2)
+                        .foregroundColor(.green)
                 }
 
                 HStack(spacing: 12) {
@@ -84,11 +101,6 @@ struct ContentView: View {
             }
             .padding()
             .navigationTitle("Audio Recorder")
-        }
-        .alert("Error", isPresented: $audioManager.showError) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text(audioManager.errorMessage)
         }
     }
 }

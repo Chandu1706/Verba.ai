@@ -29,10 +29,19 @@ struct verbaApp: App {
         }
     }()
 
+    init() {
+        //  Initialize App Group shared UserDefaults (e.g., for widgets)
+        let defaults = UserDefaults(suiteName: "group.com.verba.shared")
+        if defaults?.string(forKey: "lastFile") == nil {
+            defaults?.set("No session yet", forKey: "lastFile")
+            defaults?.set("No transcription yet", forKey: "lastTranscription")
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .modelContext(sharedModelContainer.mainContext) // Inject context for view access
+                .modelContext(sharedModelContainer.mainContext)
         }
         .modelContainer(sharedModelContainer)
     }

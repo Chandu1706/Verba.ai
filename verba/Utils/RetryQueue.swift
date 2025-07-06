@@ -19,17 +19,17 @@ class RetryQueue {
     func add(_ url: URL) {
         guard !pendingSegments.contains(url) else { return }
         pendingSegments.append(url)
-        print("🔁 Queued failed segment: \(url.lastPathComponent)")
+        print("Queued failed segment: \(url.lastPathComponent)")
     }
 
     func flush(using apiKey: String, context: ModelContext) {
         guard NetworkMonitor.shared.isConnected else {
-            print("📴 No internet. Retry postponed.")
+            print(" No internet. Retry postponed.")
             return
         }
 
         guard !isFlushing else {
-            print("🔄 Already flushing retry queue.")
+            print(" Already flushing retry queue.")
             return
         }
 
@@ -38,7 +38,7 @@ class RetryQueue {
         Task {
             for url in pendingSegments {
                 guard FileManager.default.fileExists(atPath: url.path) else {
-                    print("🗑 Missing file. Skipping: \(url.lastPathComponent)")
+                    print("Missing file. Skipping: \(url.lastPathComponent)")
                     continue
                 }
 
@@ -59,7 +59,7 @@ class RetryQueue {
                         )
 
                         context.insert(segment)
-                        print("✅ Retried and saved segment: \(segment.fileName)")
+                        print(" Retried and saved segment: \(segment.fileName)")
                         continuation.resume()
                     }
                 }
@@ -69,9 +69,9 @@ class RetryQueue {
             isFlushing = false
             do {
                 try context.save()
-                print("💾 Retry flush completed and saved.")
+                print("Retry flush completed and saved.")
             } catch {
-                print("❌ Failed to save after retry flush: \(error.localizedDescription)")
+                print(" Failed to save after retry flush: \(error.localizedDescription)")
             }
         }
     }

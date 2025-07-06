@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
+import Foundation
 
 struct SessionListView: View {
     @Environment(\.modelContext) private var modelContext
@@ -7,6 +9,10 @@ struct SessionListView: View {
     @State private var isLoading = false
     @State private var offset = 0
     @State private var searchText = ""
+    @State private var exportFileURL: URL? = nil
+    @State private var selectedSession: RecordingSession? = nil
+    @State private var showAlert = false
+
     private let pageSize = 50
 
     var body: some View {
@@ -18,7 +24,7 @@ struct SessionListView: View {
                     ForEach(groupedSessions.keys.sorted(by: >), id: \.self) { date in
                         Section(header: Text(formatted(date))) {
                             ForEach(groupedSessions[date] ?? [], id: \.persistentModelID) { session in
-                                NavigationLink(destination: SessionDetailView(session: session)) {
+                                HStack {
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack {
                                             Text(session.fileName)
@@ -30,10 +36,19 @@ struct SessionListView: View {
                                             .font(.caption)
                                             .foregroundColor(.gray)
                                     }
-                                    .onAppear {
-                                        if session == sessions.last {
-                                            Task { await loadMoreSessions() }
-                                        }
+                                    Spacer()
+                                    if selectedSession?.persistentModelID == session.persistentModelID {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundColor(.green)
+                                    }
+                                }
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    selectedSession = session
+                                }
+                                .onAppear {
+                                    if session == sessions.last {
+                                        Task { await loadMoreSessions() }
                                     }
                                 }
                             }
@@ -63,6 +78,37 @@ struct SessionListView: View {
                 }
                 .refreshable {
                     await refreshSessions()
+                }
+
+                Divider()
+
+                Button(action: {
+                    if let session = selectedSession {
+                        exportAndShare(session)
+                    } else {
+                        showAlert = true
+                    }
+                }) {
+                    Text(" Export & Share")
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .foregroundColor(.white)
+                        .clipShape(Capsule())
+                        .padding(.horizontal)
+                }
+                .padding(.bottom, 12)
+                .alert("Please select a session to export", isPresented: $showAlert) {
+                    Button("OK", role: .cancel) { }
+                }
+
+                if let fileToShare = exportFileURL {
+                    ShareLink(item: fileToShare, preview: SharePreview("Exported Session", icon: Image(systemName: "doc"))) {
+                        Text("Tap to Share Exported Session")
+                            .font(.caption)
+                            .padding(.bottom)
+                            .foregroundColor(.blue)
+                    }
                 }
             }
         }
@@ -97,6 +143,8 @@ struct SessionListView: View {
         await MainActor.run {
             offset = 0
             sessions.removeAll()
+            selectedSession = nil
+            exportFileURL = nil
         }
         await loadMoreSessions()
     }
@@ -106,6 +154,28 @@ struct SessionListView: View {
             let session = group[index]
             DataManager.shared.deleteSession(session, context: modelContext)
             sessions.removeAll { $0.persistentModelID == session.persistentModelID }
+            if selectedSession?.persistentModelID == session.persistentModelID {
+                selectedSession = nil
+                exportFileURL = nil
+            }
+        }
+    }
+
+    private func exportAndShare(_ session: RecordingSession) {
+        let fileName = session.fileName.replacingOccurrences(of: " ", with: "_")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(fileName).csv")
+
+        var csv = "File Name,Transcription\n"
+        for segment in session.segments {
+            let safeText = segment.transcription.replacingOccurrences(of: "\"", with: "''")
+            csv += "\(segment.fileName),\"\(safeText)\"\n"
+        }
+
+        do {
+            try csv.write(to: url, atomically: true, encoding: .utf8)
+            exportFileURL = url
+        } catch {
+            print("Failed to export session: \(error)")
         }
     }
 
