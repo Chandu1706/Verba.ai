@@ -149,8 +149,14 @@ Can I use this with Whisper or another model?
   Yes, just swap the TranscriptionService logic.
 
 
-
+## Documentation
+ 📄 [View Documentation (PDF)](./Docs/Verba_Documentation.pdf)
+ 
 ## Contributors
 
  Chandu Korubilli – Developer & Architect
+ 
+
+
+
 
