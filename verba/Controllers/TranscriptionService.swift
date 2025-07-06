@@ -1,10 +1,6 @@
-//
-//  TranscriptionService.swift
-//  verba
-//
-
 import Foundation
 import Speech
+
 class TranscriptionService {
     static let shared = TranscriptionService()
 
@@ -15,17 +11,26 @@ class TranscriptionService {
     private let pollingInterval: TimeInterval = 3
     private let maxRetries = 5
 
-    func transcribeWithAssemblyAI(audioURL: URL, apiKey: String, completion: @escaping (String?) -> Void) {
+    // Public API: Transcribe using AssemblyAI (Key loaded from Keychain)
+    func transcribeWithAssemblyAI(audioURL: URL, completion: @escaping (String?) -> Void) {
+        guard let apiKey = KeychainService.load(), !apiKey.isEmpty else {
+            print(" Missing AssemblyAI key in Keychain")
+            completion("Missing AssemblyAI key")
+            return
+        }
+
         uploadAudio(audioURL: audioURL, apiKey: apiKey) { [weak self] uploadResult in
             switch uploadResult {
             case .success(let uploadedURL):
                 self?.startTranscription(apiKey: apiKey, audioURL: uploadedURL, completion: completion)
             case .failure(let error):
-                print(" Upload failed: \(error.localizedDescription)")
+                print("Upload failed: \(error.localizedDescription)")
                 completion("Upload failed")
             }
         }
     }
+
+    // Public API: Fallback local transcription using Apple’s speech framework
     func transcribeWithAppleSpeech(audioURL: URL, completion: @escaping (String?) -> Void) {
         let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
         guard let recognizer = recognizer, recognizer.isAvailable else {
@@ -36,7 +41,7 @@ class TranscriptionService {
         let request = SFSpeechURLRecognitionRequest(url: audioURL)
         recognizer.recognitionTask(with: request) { result, error in
             if let error = error {
-                print(" Apple speech error: \(error)")
+                print("Apple speech error: \(error)")
                 completion(nil)
             } else if let result = result, result.isFinal {
                 completion(result.bestTranscription.formattedString)
@@ -104,7 +109,7 @@ class TranscriptionService {
 
     private func pollTranscription(apiKey: String, id: String, retries: Int, completion: @escaping (String?) -> Void) {
         guard retries < maxRetries else {
-            print(" Max retries reached for transcription ID: \(id)")
+            print("Max retries reached for transcription ID: \(id)")
             completion("Timed out")
             return
         }
@@ -116,7 +121,7 @@ class TranscriptionService {
 
         session.dataTask(with: request) { [weak self] data, response, error in
             if let error = error {
-                print(" Polling error: \(error.localizedDescription)")
+                print("Polling error: \(error.localizedDescription)")
                 completion("Polling failed")
                 return
             }
@@ -129,11 +134,11 @@ class TranscriptionService {
             }
 
             if status == "completed", let text = responseJSON["text"] as? String {
-                print(" Transcription complete: \(text.prefix(60))...")
+                print("Transcription complete: \(text.prefix(60))...")
                 completion(text)
             } else if status == "error" {
                 let errorMsg = responseJSON["error"] as? String ?? "Unknown error"
-                print(" Transcription failed: \(errorMsg)")
+                print("Transcription failed: \(errorMsg)")
                 completion("Transcription error: \(errorMsg)")
             } else {
                 print("Status: \(status). Retrying in \(self?.pollingInterval ?? 3)s...")

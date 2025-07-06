@@ -15,6 +15,9 @@ struct AboutView: View {
 
             Text("""
 Verba.ai is an AI-powered audio transcription tool. It records audio with built-in noise reduction and enhancement, and provides fast transcription using both online and offline engines.
+
+Developer
+Chandu Korubilli
 """)
                 .font(.body)
                 .multilineTextAlignment(.leading)

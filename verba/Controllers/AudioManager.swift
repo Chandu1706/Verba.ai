@@ -228,7 +228,8 @@ class AudioManager: ObservableObject {
             return
         }
 
-        guard let apiKey = Bundle.main.infoDictionary?["ASSEMBLY_API_KEY"] as? String, !apiKey.isEmpty else {
+        guard let apiKey = KeychainService.load(), !apiKey.isEmpty
+, !apiKey.isEmpty else {
             transcriptionStatus = "Missing API Key"
             print(" Missing or invalid ASSEMBLY_API_KEY in Info.plist")
             return
@@ -246,8 +247,8 @@ class AudioManager: ObservableObject {
         transcriptionStatus = "Transcribing..."
         isTranscribing = true
 
-        TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: segmentURL, apiKey: apiKey) { transcriptionText in
-            DispatchQueue.main.async {
+        TranscriptionService.shared.transcribeWithAssemblyAI(audioURL: segmentURL) { transcriptionText in
+
                 let segment = RecordingSegment(
                     fileName: segmentURL.lastPathComponent,
                     transcription: transcriptionText ?? "Transcription failed",
@@ -268,5 +269,5 @@ class AudioManager: ObservableObject {
             }
         }
     }
-}
+
 
