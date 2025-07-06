@@ -151,8 +151,10 @@ Can I use this with Whisper or another model?
 
 ## Documentation
  📄 [View Full Documentation (PDF)](verba/Docs/Verba.pdf)
-
  
+## App Screenshots
+  You can view all the app's working screenshots in the screenshots folder within Docs folder.
+  
 ## Contributors
 
  Chandu Korubilli – Developer & Architect
